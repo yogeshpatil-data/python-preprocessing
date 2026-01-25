@@ -1,0 +1,9 @@
+{
+  "app": {
+    "name": "python-control-plane-ingestion",
+    "environment": "dev"
+  },
+  "logging": {
+    "level": "INFO"
+  }
+}
