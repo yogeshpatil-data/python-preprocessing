@@ -1,20 +1,38 @@
+"""
+Safer than string paths
+Works on Linux / Mac / Windows
+Industry standard now
+"""
+
 import logging
+from pathlib import Path
+
+_LOGGING_CONFIGURED = False
 
 
-def setup_logger(name: str, level: str = "INFO"):
-    """
-    Sets up and returns a configured logger.
-    """
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
+def setup_logging() -> None:
+    global _LOGGING_CONFIGURED
 
-    if not logger.handlers:
-        handler = logging.StreamHandler()
+    if _LOGGING_CONFIGURED:
+        return
 
-        formatter = logging.Formatter(
-            "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
 
-    return logger
+    file_handler = logging.FileHandler(log_dir / "app.log")
+
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    )
+    file_handler.setFormatter(formatter)
+
+#the root logger is on application level, so the logging behavious is set here for entire application logging.getLogger() return a root logger
+    root_logger = logging.getLogger()
+    root_logger.addHandler(file_handler)
+    root_logger.setLevel(logging.INFO)
+
+    _LOGGING_CONFIGURED = True
+
+
+def get_logger(name: str) -> logging.Logger:
+    return logging.getLogger(name)

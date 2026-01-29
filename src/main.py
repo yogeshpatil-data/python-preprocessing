@@ -1,23 +1,25 @@
-from config.loader import load_config
-from logging.logger import setup_logger
-from core.exceptions import IngestionError
+from src.config.loader import load_config
+from src.logging.logger import setup_logging, get_logger
+from src.core.exceptions import IngestionError
+from src.api.client import fetch_posts
 
 
 def main():
-    # Load configuration
-    config = load_config()
+    setup_logging()
 
-    # Setup logger
-    logger = setup_logger(
-        name=config["app"]["name"],
-        level=config["logging"]["level"]
-    )
-
+# this is a named logger for the module, its message ultimately bubbles up to the root logger
+    logger = get_logger(__name__)
     logger.info("Application started")
-    logger.info(f"Environment: {config['app']['environment']}")
 
-    # Future steps:
     # - API ingestion
+    try:
+        posts = fetch_posts()
+        logger.info(f"fetched {len(posts)} posts")
+        
+    except IngestionError:
+        logger.error("API call failed", exc_info=True)
+        raise
+
     # - File operations
     # - DB writes
 

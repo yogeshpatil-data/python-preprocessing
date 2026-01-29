@@ -7,7 +7,7 @@ def load_config():
     Loads application configuration from config/config.json
     """
 
-    project_root = Path(__file__).parent[2]    #it safely jumps to root of the project
+    project_root = Path(__file__).parents[2]    #it safely jumps to root of the project
     config_path = project_root/ "config" / "config.json"
 
 
