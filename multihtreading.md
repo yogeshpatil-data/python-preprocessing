@@ -30,7 +30,7 @@ Multithreading allows:
 ## 🔥 Important Clarification
 
 * Multithreading ≠ true parallel execution (due to GIL)
-* It improves performance when tasks are **waiting (I/O-bound)**
+* It improves performance when tasks are **I/O-bound (waiting)**
 
 ---
 
@@ -50,25 +50,13 @@ call_api_3()  # 2 sec
 
 ### ✅ With Multithreading
 
-```python
-# All API calls run together
-```
+👉 All API calls overlap
 
 👉 Total time ≈ **2 seconds**
 
 ---
 
-## 🔥 Why?
-
-Because while one thread is waiting (network/disk), another thread runs.
-
----
-
 # 🔹 4. Python Threading Basics
-
----
-
-## ✅ Creating a Thread
 
 ```python
 import threading
@@ -83,7 +71,7 @@ t.join()
 
 ---
 
-# 🔹 5. Components of Multithreading (VERY IMPORTANT)
+# 🔹 5. Components of Multithreading
 
 ---
 
@@ -93,10 +81,8 @@ t.join()
 t = threading.Thread(target=task, args=(arg1,))
 ```
 
-### Parameters:
-
 * `target` → function to execute
-* `args` → arguments for function
+* `args` → arguments
 
 ---
 
@@ -106,8 +92,7 @@ t = threading.Thread(target=task, args=(arg1,))
 t.start()
 ```
 
-👉 Starts the thread
-👉 Executes the function in a separate thread
+👉 Starts execution in a separate thread
 
 ---
 
@@ -117,20 +102,18 @@ t.start()
 t.join()
 ```
 
-### What it does:
-
-> Makes the main thread **wait** until this thread finishes
+> Makes the main thread **wait until this thread completes**
 
 ---
 
-### 🔥 Example Without `join()`
+### 🔥 Without `join()`
 
 ```python
 t.start()
 print("Done")
 ```
 
-👉 Output may be:
+Possible output:
 
 ```
 Done
@@ -147,7 +130,7 @@ t.join()
 print("Done")
 ```
 
-👉 Output:
+Output:
 
 ```
 Running task
@@ -158,41 +141,192 @@ Done
 
 ## 🔥 Key Insight
 
-> `join()` ensures synchronization
-
-Without it:
-
-* Program may exit early
-* Results may be incomplete
+> `join()` ensures **synchronization and completeness**
 
 ---
 
-# 🔹 6. How Threads Work Internally
+# 🔹 6. How Threads Actually Work (CRITICAL UNDERSTANDING)
 
 ---
 
-## 🔸 Context Switching
+## 🔥 Core Question
 
-* CPU switches between threads
-* Happens when:
-
-  * Thread is waiting (I/O)
-  * Time slice ends
+> What happens when a thread is waiting for API or file I/O?
 
 ---
 
-## 🔸 GIL (Global Interpreter Lock)
-
-👉 Only one thread executes Python bytecode at a time
+## 🔹 Execution Flow (Step-by-step)
 
 ---
 
-### 🔥 Implication
+### Scenario: Two API calls in two threads
 
-| Task Type | Threading Benefit |
-| --------- | ----------------- |
-| I/O-bound | ✅ Yes             |
-| CPU-bound | ❌ No              |
+```python
+def fetch(api):
+    response = requests.get(api)
+    print(response.status_code)
+```
+
+---
+
+### 🔸 Step 1: Thread T1 starts
+
+```
+T1 → requests.get(api1)
+```
+
+* Sends request
+* Goes into **WAITING (blocked state)**
+
+---
+
+### 🔸 Step 2: CPU becomes free
+
+👉 Since T1 is waiting, CPU switches to another thread
+
+---
+
+### 🔸 Step 3: Thread T2 starts
+
+```
+T2 → requests.get(api2)
+```
+
+* Also goes into waiting
+
+---
+
+### 🔸 Step 4: Both threads waiting
+
+```
+T1 → waiting for API1
+T2 → waiting for API2
+```
+
+---
+
+### 🔸 Step 5: API1 responds
+
+```
+T1 → READY → RUNNING
+```
+
+* Resumes execution
+* Continues from next line
+
+---
+
+### 🔸 Step 6: API2 responds
+
+Same process for T2
+
+---
+
+# 🔥 MOST IMPORTANT INSIGHT
+
+> Threads are **paused, not lost**
+
+✔ Their state is preserved
+✔ Variables remain intact
+✔ Execution resumes from same point
+
+---
+
+# 🔹 Thread Lifecycle
+
+```
+RUNNING → WAITING → READY → RUNNING → DONE
+```
+
+---
+
+# 🔹 What happens to data?
+
+---
+
+## API case
+
+```python
+response = requests.get(api)
+```
+
+* OS handles network call
+* Data stored in memory buffer
+* Assigned to `response` when ready
+
+---
+
+## File case
+
+```python
+data = f.read()
+```
+
+* Disk I/O handled by OS
+* Thread waits
+* Data loaded into memory when ready
+
+---
+
+# 🔥 Key Concept
+
+> Python delegates I/O work to the OS
+> OS notifies when operation completes
+
+---
+
+# 🔹 Why This Improves Performance
+
+---
+
+## ❌ Without threads
+
+```
+[WAIT API1][WAIT API2][WAIT API3]
+```
+
+---
+
+## ✅ With threads
+
+```
+[WAIT API1]
+    [WAIT API2]
+        [WAIT API3]
+```
+
+👉 Waiting overlaps → faster execution
+
+---
+
+# 🔹 Blocking I/O
+
+When you do:
+
+```python
+requests.get()
+```
+
+👉 Thread becomes:
+
+> **Blocked (waiting for external resource)**
+
+---
+
+# 🔹 GIL Behavior
+
+* During I/O wait → GIL is released
+* Other threads can run
+
+---
+
+# 🔹 Mental Model
+
+Each thread is like:
+
+* A worker with its own state
+* Pauses when waiting
+* Resumes from same point
 
 ---
 
@@ -200,29 +334,31 @@ Without it:
 
 ---
 
-# ✅ Use Case 1: API Data Ingestion
+## ✅ API Ingestion
+
+* Fetch data from multiple APIs in parallel
 
 ---
 
-## Scenario
+## ✅ File Processing
 
-* 100 APIs
-* Each takes 1 second
-
----
-
-### ❌ Without Threads
-
-```python
-for api in apis:
-    fetch(api)
-```
-
-👉 Time = 100 seconds
+* Read multiple files simultaneously
 
 ---
 
-### ✅ With Threads
+## ✅ Web Scraping
+
+* Collect data from multiple sources
+
+---
+
+## ✅ Database Calls
+
+* Execute parallel queries
+
+---
+
+# 🔹 Example
 
 ```python
 import threading
@@ -232,7 +368,7 @@ def fetch(api):
 
 threads = []
 
-for api in apis:
+for api in ["A", "B", "C"]:
     t = threading.Thread(target=fetch, args=(api,))
     t.start()
     threads.append(t)
@@ -241,82 +377,9 @@ for t in threads:
     t.join()
 ```
 
-👉 Time ≈ 1–2 seconds
-
 ---
 
-# ✅ Use Case 2: Reading Multiple Files
-
----
-
-## Scenario
-
-* 100 small JSON files
-
----
-
-### ❌ Sequential
-
-```python
-for file in files:
-    read(file)
-```
-
----
-
-### ✅ Multithreading
-
-* Read multiple files in parallel
-* Improves disk I/O utilization
-
----
-
-# ✅ Use Case 3: Web Scraping / Data Collection
-
----
-
-* Scraping 200 URLs
-* Each takes 500ms
-
-👉 Threads significantly reduce total time
-
----
-
-# ✅ Use Case 4: Database Calls
-
----
-
-* Fetch data from multiple tables / endpoints
-* Use threads to parallelize queries
-
----
-
-# 🔹 8. Example: Multithreading with File Processing
-
-```python
-import threading
-
-def process_file(file):
-    print(f"Processing {file}")
-
-files = ["f1.json", "f2.json", "f3.json"]
-
-threads = []
-
-for f in files:
-    t = threading.Thread(target=process_file, args=(f,))
-    t.start()
-    threads.append(t)
-
-for t in threads:
-    t.join()
-
-print("All files processed")
-```
-
----
-
-# 🔹 9. When NOT to Use Multithreading
+# 🔹 8. When NOT to Use Multithreading
 
 ---
 
@@ -327,62 +390,45 @@ for i in range(10**8):
     compute()
 ```
 
-👉 Threads won’t help (GIL limitation)
+👉 GIL prevents speedup
 
 ---
 
-## ❌ Complex shared state
+## ❌ Shared mutable state
 
 * Race conditions
-* Debugging becomes difficult
+* Bugs
 
 ---
 
-# 🔹 10. Common Issues
+# 🔹 9. Common Issues
 
 ---
 
 ## 🔸 Race Condition
 
-Multiple threads modify same data:
-
-```python
-counter += 1
-```
-
-👉 Can lead to incorrect results
+Multiple threads modify same variable
 
 ---
 
 ## 🔸 Deadlock
 
-Threads waiting on each other → program stuck
+Threads waiting on each other
 
 ---
 
-# 🔹 11. Best Practices
+# 🔹 10. Best Practices
 
 ---
 
-✔ Use threads for:
-
-* API calls
-* File I/O
-* Network operations
-
-✔ Always use:
-
-```python
-join()
-```
-
-✔ Avoid shared mutable data
-
-✔ Use thread pools for scalability
+✔ Use for I/O-bound tasks
+✔ Always use `join()`
+✔ Avoid shared state
+✔ Prefer thread pools
 
 ---
 
-# 🔹 12. Advanced: Thread Pool
+# 🔹 11. Thread Pool (Recommended)
 
 ```python
 from concurrent.futures import ThreadPoolExecutor
@@ -396,28 +442,15 @@ with ThreadPoolExecutor(max_workers=5) as executor:
 
 ---
 
-# 🔥 Why ThreadPool?
-
-* Cleaner code
-* Manages threads automatically
-* Scales better
+# 🔹 12. Summary (Interview Ready)
 
 ---
 
-# 🔹 13. Summary (Interview Ready)
-
----
-
-* A thread is the smallest unit of execution in a process
 * Python programs are single-threaded by default
-* Multithreading enables concurrent execution
-* Due to GIL, it is best suited for **I/O-bound tasks**
+* Multithreading enables concurrency
+* Best for I/O-bound tasks
+* Threads pause during I/O but retain state
 * `join()` ensures proper synchronization
-* Widely used in data engineering for:
-
-  * API ingestion
-  * file processing
-  * network calls
 
 ---
 
@@ -427,7 +460,7 @@ with ThreadPoolExecutor(max_workers=5) as executor:
 | ----------------- | ------------------- |
 | Waiting (I/O)     | ✅ YES               |
 | Heavy computation | ❌ NO                |
-| Parallel CPU work | Use multiprocessing |
+| CPU parallelism   | Use multiprocessing |
 
 ---
 
