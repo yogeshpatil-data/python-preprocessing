@@ -1,110 +1,114 @@
-import requests #standard http client
-import logging
+import requests
+import json
 import time
-from src.core.exceptions import ExternalAPIError
+import logging
+import os
+from pathlib import Path
 
 
-#Every module should have its own logger
-#Name will appear as src.api.client in logs
-logger  = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+# log_dir = os.path.abspath("practice_log")
+# os.mkdir(log_dir)
 
-BASE_URL = "https://jsonplaceholder.typicode.com"
+log_dir = Path("practice_log")
+log_dir.mkdir(exist_ok = True)
 
-MAX_RETRIES = 3
-INITIAL_BACKOFF = 1  # seconds
-MAX_BACKOFF = 8      # seconds
+filehandler = logging.FileHandler(f"{log_dir}/log.txt")
+formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+
+logger.addHandler(filehandler)
+filehandler.setFormatter(formatter)
+
+logger.setLevel(logging.INFO)
+
+class ExternalAPIError(Exception):
+    pass
 
 
-def fetch_posts():
-    url = f"{BASE_URL}/posts"
+def fetch_paginated(page_size:int):
+    max_retries = 5
+    max_backoff = 8
+    page  = 1
+    base_url = "https://jsonplaceholder.typicode.com/posts"
+    timeout = (3,5)  #connection timeout and read timeout
 
-    timeout = (3,5)  # in request if we pass a tuple that means (connection timeout, read timeout)
-    logger.info("Calling Post API")
-    attempts = 0
 
-    while attempts < MAX_RETRIES:
-       attempt += 1
-       backoff = INITIAL_BACKOFF
-       logger.info("API call attempt {attempt}")
+    while True:
+        attempt = 0
+        backoff = 2
 
-       try:
-            response = requests.get(url, timeout =  timeout)
-            if response.status_code == 429:
-               raise requests.exception.HTTPError(
-                  "Rate limited 429", response=response
-               )
-            
-            response.raise_for_status()
-            return response.json()
+        while attempt <= max_retries:
+            param = {
+            "_page" : page,
+            "_limit" : page_size       
+            }
 
-       #we will decide what to do with the error we got
-       except requests.exceptions.RequestException as e:
-            
-            #Decide if retryable, set default true
             retryable = True
+            logger.info(f"Attempt = {attempt}")
 
-            # Here we are checking that the exception object(instance) e is the of type HTTPError
-            if isinstance(e, requests.exceptions.HTTPError):
+            try:
+                response  = requests.get(base_url, params= param,timeout=timeout)
+                if response.status_code == 429:
+                    raise requests.exceptions.HTTPError("Rate Limited : 429", response=response)
+                
+                response.raise_for_status()
+                data  = response.json()
+
+                if not data:
+                    logger.info("Fetching completed")
+                    return          #end the API calling
+
+                logger.info(f"Fetching page: {page}")
+                yield page, data
+
+                page += 1
+                break  # don't process the retry mechanism
+            
+            except requests.exceptions.RequestException as e:
+
 
                 #e.reponse because e is the exception object of basae class RequestExc
                 #HTTPError is the child class of RequestException class
                 #only HTTPError class has the attribute reponse that's why e.reponse
                 #reponse is the HTTP response object returned by the  server
-                status =  getattr(e.repsonse, "status_code", None)
+                if isinstance(e, requests.exceptions.HTTPError):
 
-                if status and 400<= status < 500 and status != 429:
-                    #A bad client request is not retryable
-                    retryable = False
+                    status  = getattr(e,"status_code", None)
 
-            if not retryable:
-                logger.error("Non retryable API failure", exc_info=True)
-                raise ExternalAPIError("External API rejected the request") from e
+                    if status and 400 <=  status < 500 and status != 429:
+                        retryable = False
+
+                if not retryable:
+                    logger.error("Bad request", exc_info = True)
+                    raise ExternalAPIError from e
+                
+                if attempt > max_retries:
+                    logger.error(f"Max attempt reached: {attempt}", exc_info=True)
+                    raise ExternalAPIError("Max Number of retries attempted") from e
+                
+                logger.warning(f"Retryable API failure backing of after {max_backoff}")
+
+                attempt += 1
+                time.sleep(backoff)
+
+                backoff = min(backoff*2, max_backoff)
+
+
+
+output_dir = Path("output_files")
+output_dir.mkdir(exist_ok = True)
+
+for page, data in fetch_paginated(10):
+    file_path = f"{output_dir}/page_{page}.json"
+
+    logger.info(f"Saving File page_{page}.json")
+
+    with open(file_path, "w") as f:
+        json.dump(data, f, indent =2)
+    print(f"Saved page {page} -> {file_path}")
+
+
             
-            if attempt>= MAX_RETRIES:
-                logger.error("API failed after max retired", exc_info=True)
-                raise ExternalAPIError ("External API failed after retries") from e
-            
-            logger.warning(f"Retryable API failure backing of after {MAX_BACKOFF}")
-
-            time.sleep(backoff)
-            backoff = min(backoff*2, MAX_BACKOFF)
 
 
-#page_size is decided by API, we can request a page of certain size but it depends on API
 
-
-# afunction with yeild keyword is the generator function
-def fetch_post_paginated(page_size = 10):
-    page  = 1
-    timeout = (3,5)
-
-    while True:
-
-        params = {
-            "_page" : page,
-            "_limit" : page_size
-        }
-
-        logger.info(f"fetching page {page}")
-
-        try:
-            response =  requests.get(url, params = params, timeout = timeout)
-            response.raise_for_status()
-            data = response.json()
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"External API call failed")
-            raise ExternalAPIError(f"API call failed") from e
-        
-        #this is page level logic
-        #if no records returned while requesting next page that means pagination completed
-
-        if not data:
-            logger.info(f"No more data returned pagination complete")
-            break
-
-        #this is record level logic, iteration over the records returned in one set of 'data'
-        for record in data:
-            yield record   #yeild makes this whole function a generator
-        
-        page += 1
